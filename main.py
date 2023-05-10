@@ -20,41 +20,25 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
+from torch.utils.tensorboard import SummaryWriter
+#tensorboard --logdir my_log
+writer = SummaryWriter(log_dir='runs/tinyimagenet_accuracy')
+
 
 # Modify output dimension to suit Tiny-ImageNet
 resnet18 = models.resnet18(pretrained=True)
 num_ftrs = resnet18.fc.in_features # get output dimension
 resnet18.fc = nn.Linear(num_ftrs,200)
 
-#modify the label
-label_map = {}
-with open('tiny-imagenet-200/wnids.txt', 'r') as f:
-    classes = [line.strip() for line in f.readlines()]
-for i, c in enumerate(classes):
-    label_map[c] = i
 
-with open('tiny-imagenet-200/val/val_annotations.txt', 'r') as f:
-    val_annotations = f.readlines()
+# --------------------------
 
-for annotation in val_annotations:
-    # 解析标注
-    parts = annotation.strip().split('\t')
-    filename = parts[0]
-    classname = parts[1]
-
-    # 将ImageNet类别号映射到Tiny ImageNet类别号
-    label = label_map[classname]
-
-    # 使用映射后的标签更新标注文件
-    val_labels[filename] = label
-    
-# 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('data', metavar='DIR', nargs='?', default='imagenet',
+parser.add_argument('data', metavar='DIR', nargs='?', default='..\\tiny-imagenet-200',
                     help='path to dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
@@ -306,8 +290,20 @@ def main_worker(gpu, ngpus_per_node, args):
         train(train_loader, model, criterion, optimizer, epoch, device, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
-        
+        acc1,acc5,loss = validate(val_loader, model, criterion, args)
+        #tensorboard
+        writer.add_scalar(tag="top1/val", # 可以暂时理解为图像的名字
+                      scalar_value=acc1,  # 纵坐标的值
+                      global_step=epoch  # 当前是第几次迭代，可以理解为横坐标的值
+                      )
+        writer.add_scalar(tag="top5/val", # 可以暂时理解为图像的名字
+                      scalar_value=acc5,  # 纵坐标的值
+                      global_step=epoch   # 当前是第几次迭代，可以理解为横坐标的值
+                      )
+        writer.add_scalar(tag="loss/val", # 可以暂时理解为图像的名字
+                      scalar_value=losses,  # 纵坐标的值
+                      global_step=epoch   # 当前是第几次迭代，可以理解为横坐标的值
+                      )
         scheduler.step()
         
         # remember best acc@1 and save checkpoint
@@ -358,7 +354,19 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
         losses.update(loss.item(), images.size(0))
         top1.update(acc1[0], images.size(0))
         top5.update(acc5[0], images.size(0))
-
+        # tensorboard
+        writer.add_scalar(tag="top1/train", # 可以暂时理解为图像的名字
+                      scalar_value=acc1,  # 纵坐标的值
+                      global_step=epoch*args.batch_size  # 当前是第几次迭代，可以理解为横坐标的值
+                      )
+        writer.add_scalar(tag="top5/train", # 可以暂时理解为图像的名字
+                      scalar_value=acc5,  # 纵坐标的值
+                      global_step=epoch*args.batch_size   # 当前是第几次迭代，可以理解为横坐标的值
+                      )
+        writer.add_scalar(tag="loss/train", # 可以暂时理解为图像的名字
+                      scalar_value=losses,  # 纵坐标的值
+                      global_step=epoch*args.batch_size  # 当前是第几次迭代，可以理解为横坐标的值
+                      )
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
@@ -431,7 +439,7 @@ def validate(val_loader, model, criterion, args):
 
     progress.display_summary()
 
-    return top1.avg
+    return top1.avg,top5.avg,losses
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -534,6 +542,6 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-
+writer.close()
 if __name__ == '__main__':
     main()

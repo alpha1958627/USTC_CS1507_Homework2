@@ -26,9 +26,10 @@ writer = SummaryWriter(log_dir='runs/tinyimagenet_accuracy')
 
 
 # Modify output dimension to suit Tiny-ImageNet
-resnet18 = models.resnet18(pretrained=True)
-num_ftrs = resnet18.fc.in_features # get output dimension
-resnet18.fc = nn.Linear(num_ftrs,200)
+
+# resnet18 = models.resnet18(pretrained=True)
+# num_ftrs = resnet18.fc.in_features # get output dimension
+# resnet18.fc = nn.Linear(num_ftrs,200)
 
 
 # --------------------------

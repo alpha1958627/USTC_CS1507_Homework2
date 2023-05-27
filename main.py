@@ -20,16 +20,16 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
-from torch.utils.tensorboard import SummaryWriter
-#tensorboard --logdir my_log
-writer = SummaryWriter(log_dir='runs/tinyimagenet_accuracy')
+from tensorboardX import SummaryWriter
+#tensorboard --logdir runs/tinyimagenet_accuracy
+writer = SummaryWriter(log_dir='/output/logs')
 
 
 # Modify output dimension to suit Tiny-ImageNet
 
-# resnet18 = models.resnet18(pretrained=True)
-# num_ftrs = resnet18.fc.in_features # get output dimension
-# resnet18.fc = nn.Linear(num_ftrs,200)
+resnet18 = models.resnet18(pretrained=True)
+num_ftrs = resnet18.fc.in_features # get output dimension
+resnet18.fc = nn.Linear(num_ftrs,200)
 
 
 # --------------------------
@@ -39,7 +39,7 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('data', metavar='DIR', nargs='?', default='..\\tiny-imagenet-200',
+parser.add_argument('--data', metavar='DIR', nargs='?', default='..\\tiny-imagenet-200',
                     help='path to dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
@@ -48,7 +48,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                         ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
+parser.add_argument('--epochs', default=20, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -242,14 +242,14 @@ def main_worker(gpu, ngpus_per_node, args):
         val_dataset = datasets.FakeData(50000, (3, 224, 224), 1000, transforms.ToTensor())
     else:
         traindir = os.path.join(args.data, 'train')
-        valdir = os.path.join(args.data, 'val')
+        valdir = os.path.join(args.data, 'val_reorg')
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
         train_dataset = datasets.ImageFolder(
             traindir,
             transforms.Compose([
-                transforms.RandomResizedCrop(224),
+                # transforms.RandomResizedCrop(224),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 normalize,
@@ -258,8 +258,8 @@ def main_worker(gpu, ngpus_per_node, args):
         val_dataset = datasets.ImageFolder(
             valdir,
             transforms.Compose([
-                transforms.Resize(256),
-                transforms.CenterCrop(224),
+                # transforms.Resize(256),
+                # transforms.CenterCrop(224),
                 transforms.ToTensor(),
                 normalize,
             ]))
@@ -293,17 +293,17 @@ def main_worker(gpu, ngpus_per_node, args):
         # evaluate on validation set
         acc1,acc5,loss = validate(val_loader, model, criterion, args)
         #tensorboard
-        writer.add_scalar(tag="top1/val", # 可以暂时理解为图像的名字
-                      scalar_value=acc1,  # 纵坐标的值
-                      global_step=epoch  # 当前是第几次迭代，可以理解为横坐标的值
+        writer.add_scalar("top1/val", # 可以暂时理解为图像的名字
+                      acc1,  # 纵坐标的值
+                      epoch  # 当前是第几次迭代，可以理解为横坐标的值
                       )
-        writer.add_scalar(tag="top5/val", # 可以暂时理解为图像的名字
-                      scalar_value=acc5,  # 纵坐标的值
-                      global_step=epoch   # 当前是第几次迭代，可以理解为横坐标的值
+        writer.add_scalar("top5/val", # 可以暂时理解为图像的名字
+                      acc5,  # 纵坐标的值
+                      epoch   # 当前是第几次迭代，可以理解为横坐标的值
                       )
-        writer.add_scalar(tag="loss/val", # 可以暂时理解为图像的名字
-                      scalar_value=losses,  # 纵坐标的值
-                      global_step=epoch   # 当前是第几次迭代，可以理解为横坐标的值
+        writer.add_scalar("loss/val", # 可以暂时理解为图像的名字
+                      loss,  # 纵坐标的值
+                      epoch   # 当前是第几次迭代，可以理解为横坐标的值
                       )
         scheduler.step()
         
@@ -356,18 +356,9 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
         top1.update(acc1[0], images.size(0))
         top5.update(acc5[0], images.size(0))
         # tensorboard
-        writer.add_scalar(tag="top1/train", # 可以暂时理解为图像的名字
-                      scalar_value=acc1,  # 纵坐标的值
-                      global_step=epoch*args.batch_size  # 当前是第几次迭代，可以理解为横坐标的值
-                      )
-        writer.add_scalar(tag="top5/train", # 可以暂时理解为图像的名字
-                      scalar_value=acc5,  # 纵坐标的值
-                      global_step=epoch*args.batch_size   # 当前是第几次迭代，可以理解为横坐标的值
-                      )
-        writer.add_scalar(tag="loss/train", # 可以暂时理解为图像的名字
-                      scalar_value=losses,  # 纵坐标的值
-                      global_step=epoch*args.batch_size  # 当前是第几次迭代，可以理解为横坐标的值
-                      )
+        writer.add_scalar('train/Loss', losses.val, epoch * len(train_loader) + i)
+        writer.add_scalar('train/Acc@1', top1.val, epoch * len(train_loader) + i)
+        writer.add_scalar('train/Acc@5', top5.val, epoch * len(train_loader) + i)
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
@@ -386,6 +377,7 @@ def validate(val_loader, model, criterion, args):
     def run_validate(loader, base_progress=0):
         with torch.no_grad():
             end = time.time()
+            counter=0
             for i, (images, target) in enumerate(loader):
                 i = base_progress + i
                 if args.gpu is not None and torch.cuda.is_available():
@@ -399,7 +391,16 @@ def validate(val_loader, model, criterion, args):
                 # compute output
                 output = model(images)
                 loss = criterion(output, target)
-
+                # print(output)
+                a=output.argmax(dim=-1)
+                # print(len(target))
+                # print(len(a))
+                with open('/output/compare2.txt','a+') as f:
+                    if i < 39 :
+                        for j in range(0,256):
+                            if a[j]!=target[j]:
+                                f.write(f'第{i}轮第{j}张预测错误\n')
+                
                 # measure accuracy and record loss
                 acc1, acc5 = accuracy(output, target, topk=(1, 5))
                 losses.update(loss.item(), images.size(0))
@@ -412,7 +413,6 @@ def validate(val_loader, model, criterion, args):
 
                 if i % args.print_freq == 0:
                     progress.display(i + 1)
-
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
@@ -440,13 +440,50 @@ def validate(val_loader, model, criterion, args):
 
     progress.display_summary()
 
-    return top1.avg,top5.avg,losses
+    return top1.avg,top5.avg,losses.avg
+    # evaluate using the first checkpoint
+    model.load_state_dict(torch.load('checkpoint.pth17.tar')['state_dict'])
+    all_preds = []
+    all_targets = []
+    run_validate(val_loader)
+    results1 = {
+        'loss': losses.avg,
+        'top1_acc': top1.avg,
+        'top5_acc': top5.avg,
+        'preds': torch.cat(all_preds, dim=0),
+        'targets': torch.cat(all_targets, dim=0)
+    }
+    
+    # reset evaluation metrics
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    
+    # evaluate using the second checkpoint
+    model.load_state_dict(torch.load('checkpoint.pth17.tar')['state_dict'])
+    all_preds = []
+    all_targets = []
+    run_validate(val_loader)
+    results2 = {
+        'loss': losses.avg,
+        'top1_acc': top1.avg,
+        'top5_acc': top5.avg,
+        'preds': torch.cat(all_preds, dim=0),
+        'targets': torch.cat(all_targets, dim=0)
+    }
+    
+    # compare results
+    diff_indices = (results1['preds'] != results2['preds']).any(dim=1).nonzero().flatten()
+    if len(diff_indices) > 10:
+        diff_indices = diff_indices[:10]
+    print(f"Found {len(diff_indices)} different images.")
+    
+    return results1, results2, diff_indices
 
-
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename='/output/checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        shutil.copyfile(filename, '/output/model_best.pth.tar')
 
 class Summary(Enum):
     NONE = 0
